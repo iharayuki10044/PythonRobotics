@@ -51,6 +51,8 @@ class StateSteerModel:
         self.yaw = yaw
         self.v = v
         self.target_ind = 0
+        self.steer_right_pos = steer_right_pos
+        self.steer_left_pos = steer_left_pos
         self.steer_right_x = x + (TREAD/2) * math.cos(yaw + steer_right_pos)
         self.steer_right_y = y + (TREAD/2) * math.sin(yaw + steer_right_pos)
         self.steer_left_x = x + (TREAD/2) * math.cos(yaw - steer_left_pos)
@@ -64,8 +66,6 @@ class StateSteerModel:
         self.steer_right_pos = right_steer 
         self.steer_left_pos = left_steer
 
-
-
     def calc_distance(self, point_x, point_y):
         dx = self.x - point_x
         dy = self.y - point_y
@@ -78,6 +78,8 @@ class States:
         self.yaw = []
         self.v = []
         self.t = []
+        self.steer_right_pos = []
+        self.steer_left_pos = []
 
     def append(self, t, state):
         self.x.append(state.x)
@@ -86,6 +88,15 @@ class States:
         self.v.append(state.v)
         self.t.append(t)
 
+    def append_steer(self, t, state):
+        self.x.append(state.x)
+        self.y.append(state.y)
+        self.yaw.append(state.yaw)
+        self.v.append(state.v)
+        self.t.append(t)
+        self.steer_right_pos.append(state.steer_right_pos)
+        self.steer_left_pos.append(state.steer_left_pos) 
+        
 
 def proportional_control(target, current):
     a = Kp * (target - current)
@@ -133,7 +144,6 @@ class TargetCourse:
 
         return ind, Lf
     
-
 
     def search_target_index_steer_robot(self, state_steer_model):
     
@@ -224,7 +234,6 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
                   fc=fc, ec=ec, head_width=width, head_length=width)
         plt.plot(x, y)
 
-
 def main():
     #  target course
     cx = np.arange(0, 50, 0.5)
@@ -237,7 +246,7 @@ def main():
     # initial state
     # state = State(x=-0.0, y=-3.0, yaw=0.0, v=0.0)
 
-    state = StateSteerModel(x=-0.0, y=-3.0, yaw=0.0, v=0.0, steer_right_pos=0.0, steer_left_pos=0.0)
+    state = StateSteerModel(x=-0.0, y=-0.0, yaw=0.0, v=0.0, steer_right_pos=0.0, steer_left_pos=0.0)
 
     lastIndex = len(cx) - 1
     time = 0.0
@@ -248,22 +257,26 @@ def main():
 
     target_ind, fake = target_course.search_target_index_steer_robot(state)
 
+    states.steer_right_pos.append(0.0)
+    states.steer_left_pos.append(0.0)
+
     while T >= time and lastIndex > target_ind:
 
         # Calc control input
         ai = proportional_control(target_speed, state.v)
         # di, target_ind = pure_pursuit_steer_control(
-        #     state, target_course, target_ind)
+            # state, target_course, target_ind)
 
         # state.update(ai, di)  # Control vehicle
 
         di, alpha, omega, right_steer, left_steer, target_ind = pure_pursuit_robot_steer_control(
             state, target_course, target_ind, target_speed)
 
-        state.update(ai, omega, right_steer, left_steer)
+        state.update(ai, omega, right_steer, left_steer)        
 
         time += dt
-        states.append(time, state)
+        # states.append(time, state)
+        states.append_steer(time, state)
 
         if show_animation:  # pragma: no cover
             plt.cla()
@@ -293,13 +306,20 @@ def main():
         plt.axis("equal")
         plt.grid(True)
 
+        # plt.subplots(1)
+        # plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
+        # plt.xlabel("Time[s]")
+        # plt.ylabel("Speed[km/h]")
+        # plt.grid(True)
+        # plt.show()
+         
         plt.subplots(1)
-        plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
+        plt.plot(states.t, [ir  * 180 /3.14 for ir in states.steer_right_pos], "-r")
+        plt.plot(states.t, [il * 180 / 3.14 for il in states.steer_left_pos], "-b")
         plt.xlabel("Time[s]")
-        plt.ylabel("Speed[km/h]")
+        plt.ylabel("Steer[rad]")
         plt.grid(True)
         plt.show()
-
 
 if __name__ == '__main__':
     print("Pure pursuit path tracking simulation start")
