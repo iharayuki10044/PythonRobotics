@@ -306,12 +306,11 @@ def main():
         plt.axis("equal")
         plt.grid(True)
 
-        # plt.subplots(1)
-        # plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
-        # plt.xlabel("Time[s]")
-        # plt.ylabel("Speed[km/h]")
-        # plt.grid(True)
-        # plt.show()
+        plt.subplots(1)
+        plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
+        plt.xlabel("Time[s]")
+        plt.ylabel("Speed[km/h]")
+        plt.grid(True)
          
         plt.subplots(1)
         plt.plot(states.t, [ir  * 180 /3.14 for ir in states.steer_right_pos], "-r")
