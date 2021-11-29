@@ -96,13 +96,11 @@ class States:
         self.t.append(t)
         self.steer_right_pos.append(state.steer_right_pos)
         self.steer_left_pos.append(state.steer_left_pos) 
-        
 
 def proportional_control(target, current):
     a = Kp * (target - current)
 
     return a
-
 
 class TargetCourse:
 
@@ -144,7 +142,6 @@ class TargetCourse:
 
         return ind, Lf
     
-
     def search_target_index_steer_robot(self, state_steer_model):
     
         # To speed up nearest point search, doing it at only first time.
@@ -311,9 +308,9 @@ def main():
         plt.xlabel("Time[s]")
         plt.ylabel("Speed[km/h]")
         plt.grid(True)
-         
+ 
         plt.subplots(1)
-        plt.plot(states.t, [ir  * 180 /3.14 for ir in states.steer_right_pos], "-r")
+        plt.plot(states.t, [ir  * 180 / 3.14 for ir in states.steer_right_pos], "-r")
         plt.plot(states.t, [il * 180 / 3.14 for il in states.steer_left_pos], "-b")
         plt.xlabel("Time[s]")
         plt.ylabel("Steer[rad]")
@@ -321,5 +318,7 @@ def main():
         plt.show()
 
 if __name__ == '__main__':
+    print("===========================================")
     print("Pure pursuit path tracking simulation start")
+    print("===========================================")
     main()
