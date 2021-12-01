@@ -11,6 +11,8 @@ import math
 import matplotlib.pyplot as plt
 from numpy.ma.core import right_shift
 
+import datetime
+
 # Parameters
 k = 0.1  # look forward gain
 Lfc = 2.0  # [m] look-ahead distance
@@ -294,6 +296,10 @@ def main():
     assert lastIndex >= target_ind, "Cannot goal"
 
     if show_animation:  # pragma: no cover
+        
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime("%y_%m%d_%H%M")
+        result_dir= "./result/"
+        
         plt.cla()
         plt.plot(cx, cy, ".r", label="course")
         plt.plot(states.x, states.y, "-b", label="trajectory")
@@ -302,19 +308,22 @@ def main():
         plt.ylabel("y[m]")
         plt.axis("equal")
         plt.grid(True)
+        plt.savefig(result_dir +  "trajectory_" + date + ".png")
 
         plt.subplots(1)
         plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
         plt.xlabel("Time[s]")
         plt.ylabel("Speed[km/h]")
         plt.grid(True)
- 
+        plt.savefig(result_dir + "speed_" + date + ".png")
+
         plt.subplots(1)
         plt.plot(states.t, [ir  * 180 / 3.14 for ir in states.steer_right_pos], "-r")
         plt.plot(states.t, [il * 180 / 3.14 for il in states.steer_left_pos], "-b")
         plt.xlabel("Time[s]")
         plt.ylabel("Steer[rad]")
         plt.grid(True)
+        plt.savefig(result_dir + "steer_" + date + ".png")
         plt.show()
 
 if __name__ == '__main__':
