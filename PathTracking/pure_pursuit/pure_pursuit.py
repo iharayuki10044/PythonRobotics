@@ -196,7 +196,7 @@ def main():
     # cy = [math.sin(ix / 5.0) * ix / 2.0  + math.cos(ix / 50) *ix /5 for ix in cx]
     # cy = [math.sin(ix / 2.0) for ix in cx]
 
-    target_speed = 20.0 / 3.6  # [m/s]
+    target_speed = 10.0 / 3.6  # [m/s]
 
     T = 100.0  # max simulation time
 
