@@ -30,32 +30,34 @@ class State:
         self.y = y
         self.yaw = yaw
         self.v = v
-        self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
+        self.v_right = 0.0
+        self.v_left = 0.0
 
-    def update(self, a, delta):
+    def update(self, delta, a_right, a_left):
+        self.v_right += a_right * dt
+        self.v_left += a_left * dt 
+        self.v = (self.v_right + self.v_left) / 2.0 
+        
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
         self.yaw += self.v / WB * math.tan(delta) * dt
-        self.v += a * dt
-        self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
 
     def calc_distance(self, point_x, point_y):
-        dx = self.rear_x - point_x
-        dy = self.rear_y - point_y
+        dx = self.x - point_x
+        dy = self.y - point_y
         return math.hypot(dx, dy)
 
+
 class States:
-    
+
     def __init__(self):
         self.x = []
         self.y = []
         self.yaw = []
         self.v = []
         self.t = []
-        self.steer_right_pos = []
-        self.steer_left_pos = []
+        self.v_right = []
+        self.v_left = []
 
     def append(self, t, state):
         self.x.append(state.x)
@@ -63,15 +65,9 @@ class States:
         self.yaw.append(state.yaw)
         self.v.append(state.v)
         self.t.append(t)
+        self.v_right.append(state.v_right)
+        self.v_left.append(state.v_left)
 
-    def append_steer(self, t, state):
-        self.x.append(state.x)
-        self.y.append(state.y)
-        self.yaw.append(state.yaw)
-        self.v.append(state.v)
-        self.t.append(t)
-        self.steer_right_pos.append(state.steer_right_pos)
-        self.steer_left_pos.append(state.steer_left_pos) 
 
 def proportional_control(target, current):
     a = Kp * (target - current)
@@ -151,7 +147,7 @@ class TargetCourse:
 
         return ind, Lf
 
-def pure_pursuit_steer_control(state, trajectory, pind):
+def pure_pursuit_robot_control(state, trajectory, pind, target_speed):
     ind, Lf = trajectory.search_target_index(state)
 
     if pind >= ind:
@@ -165,12 +161,14 @@ def pure_pursuit_steer_control(state, trajectory, pind):
         ty = trajectory.cy[-1]
         ind = len(trajectory.cx) - 1
 
-    alpha = math.atan2(ty - state.rear_y, tx - state.rear_x) - state.yaw
+    alpha = math.atan2(ty - state.y, tx - state.x) - state.yaw
+    delta = math.atan2(alpha * target_speed, Lfc)
+    omega = target_speed * alpha / Lfc
+    
+    vr = target_speed + 0.5 * omega * Lf
+    vl = target_speed - 0.5 * omega * Lf
 
-    delta = math.atan2(2.0 * WB * math.sin(alpha) / Lf, 1.0)
-
-    return delta, ind
-
+    return delta, alpha, omega, vr, vl, ind
 
 def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
     """
@@ -208,21 +206,26 @@ def main():
     states = States()
     states.append(time, state)
     target_course = TargetCourse(cx, cy)
-    target_ind, _ = target_course.search_target_index(state)
+
+    target_ind, fake = target_course.search_target_index_steer_robot(state)
 
 
     while T >= time and lastIndex > target_ind:
 
         # Calc control input
-        ai = proportional_control(target_speed, state.v)
+        # ai = proportional_control(target_speed, state.v)
 
         # simulate augumented dynamic of bicycle model
-        di, target_ind = pure_pursuit_steer_control(
-            state, target_course, target_ind)
-        state.update(ai, di)  # Control vehicle
+        di, alpha, omega, vr, vl , target_ind= pure_pursuit_robot_control(
+            state, target_course, target_ind, target_speed)
+        
+        a_right = proportional_control(vr , states.v_right[-1])
+        a_left = proportional_control(vl , states.v_left[-1])
+        
+        state.update(di, a_right, a_left)  # Control vehicle
         time += dt
         states.append(time, state)
-
+    
         if show_animation:  # pragma: no cover
             plt.cla()
             # for stopping simulation with the esc key.
@@ -254,19 +257,21 @@ def main():
         plt.ylabel("y[m]")
         plt.axis("equal")
         plt.grid(True)
-        plt.savefig(result_dir +  "trajectory_" + date + ".png")
+        # plt.savefig(result_dir +  "trajectory_" + date + ".png")
 
         plt.subplots(1)
         plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
         plt.xlabel("Time[s]")
         plt.ylabel("Speed[km/h]")
         plt.grid(True)
-        plt.savefig(result_dir + "speed_" + date + ".png")
 
+        plt.plot(states.t, [ir * 3.6 for ir in states.v_right], "-g")
+        plt.plot(states.t, [il * 3.6 for il in states.v_left], "-b")
+        # plt.savefig(result_dir + "steer_" + date + ".png")
         plt.show()
 
 if __name__ == '__main__':
     print("===========================================")
-    print("Bycicle model Pure pursuit path tracking simulation start")
+    print("Pure pursuit path tracking simulation start")
     print("===========================================")
     main()

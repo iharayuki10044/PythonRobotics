@@ -46,8 +46,34 @@ class State:
         dy = self.rear_y - point_y
         return math.hypot(dx, dy)
 
+class StateSteerModel:
+    def __init__(self, x, y, yaw, v, steer_right_pos, steer_left_pos):
+        self.x = x
+        self.y = y
+        self.yaw = yaw
+        self.v = v
+        self.target_ind = 0
+        self.steer_right_pos = steer_right_pos
+        self.steer_left_pos = steer_left_pos
+        self.steer_right_x = x + (TREAD/2) * math.cos(yaw + steer_right_pos)
+        self.steer_right_y = y + (TREAD/2) * math.sin(yaw + steer_right_pos)
+        self.steer_left_x = x + (TREAD/2) * math.cos(yaw - steer_left_pos)
+        self.steer_left_y = y + (TREAD/2) * math.sin(yaw - steer_left_pos) 
+
+    def update(self, a, omega, right_steer, left_steer):
+        self.yaw += omega * dt
+        self.x += self.v * math.cos(self.yaw) * dt
+        self.y += self.v * math.sin(self.yaw) * dt
+        self.v += a * dt
+        self.steer_right_pos = right_steer 
+        self.steer_left_pos = left_steer
+
+    def calc_distance(self, point_x, point_y):
+        dx = self.x - point_x
+        dy = self.y - point_y
+        return math.hypot(dx, dy)
 class States:
-    
+
     def __init__(self):
         self.x = []
         self.y = []
@@ -171,6 +197,28 @@ def pure_pursuit_steer_control(state, trajectory, pind):
 
     return delta, ind
 
+def pure_pursuit_robot_steer_control(state, trajectory, pind, target_speed):
+    ind, Lf = trajectory.search_target_index(state)
+
+    if pind >= ind:
+        ind = pind
+
+    if ind < len(trajectory.cx):
+        tx = trajectory.cx[ind]
+        ty = trajectory.cy[ind]
+    else:  # toward goal
+        tx = trajectory.cx[-1]
+        ty = trajectory.cy[-1]
+        ind = len(trajectory.cx) - 1
+
+    alpha = math.atan2(ty - state.y, tx - state.x) - state.yaw
+    delta = math.atan2(alpha * target_speed, Lfc)
+    omega = target_speed * alpha / Lfc
+    r = math.fabs(target_speed / omega)
+    right_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) - TREAD/2.0)
+    left_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) + TREAD/2.0)
+
+    return delta, alpha, omega, right_steer, left_steer, ind
 
 def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
     """
@@ -201,15 +249,17 @@ def main():
     T = 100.0  # max simulation time
 
     # initial state
-    state = State(x=-0.0, y=-3.0, yaw=0.0, v=0.0)
+    state = StateSteerModel(x=-0.0, y=-3.0, yaw=0.0, v=0.0, steer_right_pos=0.0, steer_left_pos=0.0)
 
     lastIndex = len(cx) - 1
     time = 0.0
     states = States()
     states.append(time, state)
     target_course = TargetCourse(cx, cy)
-    target_ind, _ = target_course.search_target_index(state)
+    target_ind, fake = target_course.search_target_index_steer_robot(state)
 
+    states.steer_right_pos.append(0.0)
+    states.steer_left_pos.append(0.0)
 
     while T >= time and lastIndex > target_ind:
 
@@ -217,11 +267,18 @@ def main():
         ai = proportional_control(target_speed, state.v)
 
         # simulate augumented dynamic of bicycle model
-        di, target_ind = pure_pursuit_steer_control(
-            state, target_course, target_ind)
-        state.update(ai, di)  # Control vehicle
+        # di, target_ind = pure_pursuit_steer_control(
+        #     state, target_course, target_ind)
+        # state.update(ai, di)  # Control vehicle
+        # time += dt
+        # states.append(time, state)
+
+        #simulate augumented steer robot model
+        di, alpha, omega, right_steer, left_steer, target_ind = pure_pursuit_robot_steer_control(
+            state, target_course, target_ind, target_speed)
+        state.update(ai, omega, right_steer, left_steer)        
         time += dt
-        states.append(time, state)
+        states.append_steer(time, state)
 
         if show_animation:  # pragma: no cover
             plt.cla()
@@ -254,19 +311,26 @@ def main():
         plt.ylabel("y[m]")
         plt.axis("equal")
         plt.grid(True)
-        plt.savefig(result_dir +  "trajectory_" + date + ".png")
+        # plt.savefig(result_dir +  "trajectory_" + date + ".png")
 
         plt.subplots(1)
         plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
         plt.xlabel("Time[s]")
         plt.ylabel("Speed[km/h]")
         plt.grid(True)
-        plt.savefig(result_dir + "speed_" + date + ".png")
+        # plt.savefig(result_dir + "speed_" + date + ".png")
 
+        plt.subplots(1)
+        plt.plot(states.t, [ir  * 180 / 3.14 for ir in states.steer_right_pos], "-r")
+        plt.plot(states.t, [il * 180 / 3.14 for il in states.steer_left_pos], "-b")
+        plt.xlabel("Time[s]")
+        plt.ylabel("Steer[rad]")
+        plt.grid(True)
+        # plt.savefig(result_dir + "steer_" + date + ".png")
         plt.show()
 
 if __name__ == '__main__':
     print("===========================================")
-    print("Bycicle model Pure pursuit path tracking simulation start")
+    print("Pure pursuit path tracking simulation start")
     print("===========================================")
     main()
