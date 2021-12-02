@@ -16,35 +16,12 @@ import datetime
 # Parameters
 k = 0.1  # look forward gain
 Lfc = 2.0  # [m] look-ahead distance
+Lfc_carrot2 = 0.5
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
 TREAD = 0.5 # [m] 
 show_animation = True
-
-
-class State:
-
-    def __init__(self, x=0.0, y=0.0, yaw=0.0, v=0.0):
-        self.x = x
-        self.y = y
-        self.yaw = yaw
-        self.v = v
-        self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
-
-    def update(self, a, delta):
-        self.x += self.v * math.cos(self.yaw) * dt
-        self.y += self.v * math.sin(self.yaw) * dt
-        self.yaw += self.v / WB * math.tan(delta) * dt
-        self.v += a * dt
-        self.rear_x = self.x - ((WB / 2) * math.cos(self.yaw))
-        self.rear_y = self.y - ((WB / 2) * math.sin(self.yaw))
-
-    def calc_distance(self, point_x, point_y):
-        dx = self.rear_x - point_x
-        dy = self.rear_y - point_y
-        return math.hypot(dx, dy)
 
 class StateSteerModel:
     def __init__(self, x, y, yaw, v, steer_right_pos, steer_left_pos):
@@ -53,6 +30,7 @@ class StateSteerModel:
         self.yaw = yaw
         self.v = v
         self.target_ind = 0
+        self.target_ind_carrot2 = 0
         self.steer_right_pos = steer_right_pos
         self.steer_left_pos = steer_left_pos
         self.steer_right_x = x + (TREAD/2) * math.cos(yaw + steer_right_pos)
@@ -62,9 +40,9 @@ class StateSteerModel:
 
     def update(self, a, omega, right_steer, left_steer):
         self.yaw += omega * dt
+        self.v += a * dt
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
-        self.v += a * dt
         self.steer_right_pos = right_steer 
         self.steer_left_pos = left_steer
 
@@ -82,13 +60,6 @@ class States:
         self.t = []
         self.steer_right_pos = []
         self.steer_left_pos = []
-
-    def append(self, t, state):
-        self.x.append(state.x)
-        self.y.append(state.y)
-        self.yaw.append(state.yaw)
-        self.v.append(state.v)
-        self.t.append(t)
 
     def append_steer(self, t, state):
         self.x.append(state.x)
@@ -110,39 +81,7 @@ class TargetCourse:
         self.cx = cx
         self.cy = cy
         self.old_nearest_point_index = None
-
-    def search_target_index(self, state):
-
-        # To speed up nearest point search, doing it at only first time.
-        if self.old_nearest_point_index is None:
-            # search nearest point index
-            dx = [state.rear_x - icx for icx in self.cx]
-            dy = [state.rear_y - icy for icy in self.cy]
-            d = np.hypot(dx, dy)
-            ind = np.argmin(d)
-            self.old_nearest_point_index = ind
-        else:
-            ind = self.old_nearest_point_index
-            distance_this_index = state.calc_distance(self.cx[ind],
-                                                      self.cy[ind])
-            while True:
-                distance_next_index = state.calc_distance(self.cx[ind + 1],
-                                                          self.cy[ind + 1])
-                if distance_this_index < distance_next_index:
-                    break
-                ind = ind + 1 if (ind + 1) < len(self.cx) else ind
-                distance_this_index = distance_next_index
-            self.old_nearest_point_index = ind
-
-        Lf = k * state.v + Lfc  # update look ahead distance
-
-        # search look ahead target point index
-        while Lf > state.calc_distance(self.cx[ind], self.cy[ind]):
-            if (ind + 1) >= len(self.cx):
-                break  # not exceed goal
-            ind += 1
-
-        return ind, Lf
+        self.old_nearest_point_carrot2_index = None
     
     def search_target_index_steer_robot(self, state_steer_model):
     
@@ -174,31 +113,43 @@ class TargetCourse:
             if (ind + 1) >= len(self.cx):
                 break  # not exceed goal
             ind += 1
+       
+        distance_next_index = 0.0
+        distance_this_index = 0.0
+        
+        # search look ahead target point carrot2 index
+        if self.old_nearest_point_carrot2_index is None:
+            # search nearest point index
+            dx = [state_steer_model.x - icx for icx in self.cx]
+            dy = [state_steer_model.y - icy for icy in self.cy]
+            d = np.hypot(dx, dy)
+            ind_carrot2 = np.argmin(d)
+            self.old_nearest_point_carrot2_index = ind_carrot2
+        else:
+            ind_carrot2 = state_steer_model.target_ind_carrot2
+            distance_this_index = state_steer_model.calc_distance(self.cx[ind_carrot2],
+                                                      self.cy[ind_carrot2])
+            while True:
+                distance_next_index = state_steer_model.calc_distance(self.cx[ind_carrot2 + 1],
+                                                          self.cy[ind_carrot2 + 1])
+                if distance_this_index < distance_next_index:
+                    break
+                ind_carrot2 = ind_carrot2 + 1 if (ind_carrot2 + 1) < len(self.cx) else ind_carrot2
+                distance_this_index = distance_next_index
+            self.old_nearest_point_carrot2_index = ind_carrot2
 
-        return ind, Lf
+        Lf_carrot2 = k * state_steer_model.v + Lfc_carrot2  # update look ahead distance
 
-def pure_pursuit_steer_control(state, trajectory, pind):
-    ind, Lf = trajectory.search_target_index(state)
+        # search look ahead target point index
+        while Lf_carrot2 > state_steer_model.calc_distance(self.cx[ind_carrot2], self.cy[ind_carrot2]):
+            if (ind_carrot2 + 1) >= len(self.cx):
+                break  # not exceed goal
+            ind_carrot2 += 1
 
-    if pind >= ind:
-        ind = pind
-
-    if ind < len(trajectory.cx):
-        tx = trajectory.cx[ind]
-        ty = trajectory.cy[ind]
-    else:  # toward goal
-        tx = trajectory.cx[-1]
-        ty = trajectory.cy[-1]
-        ind = len(trajectory.cx) - 1
-
-    alpha = math.atan2(ty - state.rear_y, tx - state.rear_x) - state.yaw
-
-    delta = math.atan2(2.0 * WB * math.sin(alpha) / Lf, 1.0)
-
-    return delta, ind
+        return ind, Lf, ind_carrot2, Lf_carrot2
 
 def pure_pursuit_robot_steer_control(state, trajectory, pind, target_speed):
-    ind, Lf = trajectory.search_target_index(state)
+    ind, Lf, ind_2, lf2= trajectory.search_target_index_steer_robot(state)
 
     if pind >= ind:
         ind = pind
@@ -206,15 +157,23 @@ def pure_pursuit_robot_steer_control(state, trajectory, pind, target_speed):
     if ind < len(trajectory.cx):
         tx = trajectory.cx[ind]
         ty = trajectory.cy[ind]
+        
+        tx2 = trajectory.cx[ind_2]
+        ty2 = trajectory.cy[ind_2]
+        
     else:  # toward goal
         tx = trajectory.cx[-1]
         ty = trajectory.cy[-1]
         ind = len(trajectory.cx) - 1
 
     alpha = math.atan2(ty - state.y, tx - state.x) - state.yaw
-    delta = math.atan2(alpha * target_speed, Lfc)
     omega = target_speed * alpha / Lfc
     r = math.fabs(target_speed / omega)
+    
+    # delta = math.atan2(alpha * target_speed, Lfc)
+    delta = math.atan2(ty2 - state.y, tx2 - state.x) - state.yaw    
+    
+    omega = target_speed * alpha / Lfc
     right_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) - TREAD/2.0)
     left_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) + TREAD/2.0)
 
@@ -238,7 +197,7 @@ def main():
     cx = np.arange(0, 50, 0.5)
     
     # default course
-    cy = [math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
+    cy = [-1 *math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
 
     # hitoigomi course
     # cy = [math.sin(ix / 5.0) * ix / 2.0  + math.cos(ix / 50) *ix /5 for ix in cx]
@@ -254,12 +213,9 @@ def main():
     lastIndex = len(cx) - 1
     time = 0.0
     states = States()
-    states.append(time, state)
+    states.append_steer(time, state)
     target_course = TargetCourse(cx, cy)
-    target_ind, fake = target_course.search_target_index_steer_robot(state)
-
-    states.steer_right_pos.append(0.0)
-    states.steer_left_pos.append(0.0)
+    target_ind, fake, target_ind_carrot2, fake_ = target_course.search_target_index_steer_robot(state)
 
     while T >= time and lastIndex > target_ind:
 
@@ -290,6 +246,7 @@ def main():
             plt.plot(cx, cy, "-r", label="course")
             plt.plot(states.x, states.y, "-b", label="trajectory")
             plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
+            plt.plot(cx[target_ind_carrot2], cy[target_ind_carrot2], "xy", label="target")
             plt.axis("equal")
             plt.grid(True)
             plt.title("Speed[km/h]:" + str(state.v * 3.6)[:4])
