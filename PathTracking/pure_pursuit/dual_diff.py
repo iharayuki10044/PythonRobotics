@@ -16,6 +16,7 @@ import datetime
 # Parameters
 k = 0.1  # look forward gain
 Lfc = 2.0  # [m] look-ahead distance
+Lfc2 = 0.5
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
@@ -32,11 +33,16 @@ class State:
         self.v = v
         self.v_right = 0.0
         self.v_left = 0.0
+        self.right_pos = 0.0
+        self.left_pos = 0.0
 
-    def update(self, delta, a_right, a_left):
+    def update(self, delta, a_right, a_left, steer_right, steer_left):
         self.v_right += a_right * dt
         self.v_left += a_left * dt 
-        self.v = (self.v_right + self.v_left) / 2.0 
+        self.v = (self.v_right + self.v_left) / 2.0
+        
+        self.right_pos = steer_right
+        self.left_pos = steer_left
         
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
@@ -80,6 +86,7 @@ class TargetCourse:
         self.cx = cx
         self.cy = cy
         self.old_nearest_point_index = None
+        self.olf_nearest_point_index2 = None
 
     def search_target_index(self, state):
 
@@ -123,7 +130,7 @@ class TargetCourse:
             dy = [state_steer_model.y - icy for icy in self.cy]
             d = np.hypot(dx, dy)
             ind = np.argmin(d)
-            self.old_nearest_point_index = ind
+            self.old_nearest_point_index2 = ind
         else:
             ind = self.old_nearest_point_index
             distance_this_index = state_steer_model.calc_distance(self.cx[ind],
@@ -144,11 +151,39 @@ class TargetCourse:
             if (ind + 1) >= len(self.cx):
                 break  # not exceed goal
             ind += 1
+     # To speed up nearest point search, doing it at only first time.
+        if self.old_nearest_point_index is None:
+            # search nearest point index
+            dx = [state_steer_model.x - icx for icx in self.cx]
+            dy = [state_steer_model.y - icy for icy in self.cy]
+            d = np.hypot(dx, dy)
+            ind2 = np.argmin(d)
+            self.old_nearest_point_index2 = ind2
+        else:
+            ind2 = self.old_nearest_point_index2
+            distance_this_index = state_steer_model.calc_distance(self.cx[ind2],
+                                                      self.cy[ind2])
+            while True:
+                distance_next_index = state_steer_model.calc_distance(self.cx[ind2 + 1],
+                                                          self.cy[ind2 + 1])
+                if distance_this_index < distance_next_index:
+                    break
+                ind2 = ind2 + 1 if (ind2 + 1) < len(self.cx) else ind2
+                distance_this_index = distance_next_index
+            self.old_nearest_point_index2 = ind2
 
-        return ind, Lf
+        Lf2 = k * state_steer_model.v + Lfc2  # update look ahead distance
+
+        # search look ahead target point index
+        while Lf2 > state_steer_model.calc_distance(self.cx[ind2], self.cy[ind2]):
+            if (ind2 + 1) >= len(self.cx):
+                break  # not exceed goal
+            ind2 += 1
+
+        return ind, Lf, ind2, Lf2
 
 def pure_pursuit_robot_control(state, trajectory, pind, target_speed):
-    ind, Lf = trajectory.search_target_index(state)
+    ind, Lf, ind2, Lf2 = trajectory.search_target_index(state)
 
     if pind >= ind:
         ind = pind
@@ -156,19 +191,34 @@ def pure_pursuit_robot_control(state, trajectory, pind, target_speed):
     if ind < len(trajectory.cx):
         tx = trajectory.cx[ind]
         ty = trajectory.cy[ind]
+        tx2 = trajectory.cx[ind2]
+        ty2 = trajectory.cy[ind2]
+        
     else:  # toward goal
         tx = trajectory.cx[-1]
         ty = trajectory.cy[-1]
         ind = len(trajectory.cx) - 1
 
     alpha = math.atan2(ty - state.y, tx - state.x) - state.yaw
-    delta = math.atan2(alpha * state.v, Lfc)
+    delta = math.atan2(ty2 - state.y, tx2 - state.x) - state.yaw
     omega = state.v * alpha / Lfc
+
+    radius = state.v / omega
     
+    di = math.atan2(radius * math.sin(delta), radius * math.cos(delta) - WB*0.5)
+    do = math.atan2(radius * math.sin(delta), radius * math.cos(delta) + WB*0.5)
+
+    if omega > 0:
+        steer_right = di
+        steer_left = do
+    else:
+        steer_right = do
+        steer_left = di
+ 
     vr = target_speed + 0.5 * omega * Lf
     vl = target_speed - 0.5 * omega * Lf
 
-    return delta, alpha, omega, vr, vl, ind
+    return delta, alpha, omega, vr, vl, steer_right, steer_left, ind, ind2
 
 def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
     """
@@ -185,7 +235,7 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
 
 def main():
     #  target course
-    cx = np.arange(0, 50, 0.1)
+    cx = np.arange(0, 50, 0.5)
     
     # default course
     # cy = [math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
@@ -208,7 +258,7 @@ def main():
     states.append(time, state)
     target_course = TargetCourse(cx, cy)
 
-    target_ind, fake = target_course.search_target_index_steer_robot(state)
+    target_ind, fake, target_ind2, fake_ = target_course.search_target_index_steer_robot(state)
 
 
     while T >= time and lastIndex > target_ind:
@@ -217,13 +267,13 @@ def main():
         # ai = proportional_control(target_speed, state.v)
 
         # simulate augumented dynamic of bicycle model
-        di, alpha, omega, vr, vl , target_ind= pure_pursuit_robot_control(
+        di, alpha, omega, vr, vl, steer_right, steer_left, target_ind, target_ind2= pure_pursuit_robot_control(
             state, target_course, target_ind, target_speed)
         
         a_right = proportional_control(vr , states.v_right[-1])
         a_left = proportional_control(vl , states.v_left[-1])
         
-        state.update(di, a_right, a_left)  # Control vehicle
+        state.update(di, a_right, a_left, steer_right, steer_left)  # Control vehicle
         time += dt
         states.append(time, state)
     
@@ -258,7 +308,7 @@ def main():
         plt.ylabel("y[m]")
         plt.axis("equal")
         plt.grid(True)
-        plt.savefig(result_dir +  "simple_diff_trajectory_" + date + ".png")
+        # plt.savefig(result_dir +  "trajectory_" + date + ".png")
 
         plt.subplots(1)
         plt.plot(states.t, [iv * 3.6 for iv in states.v], "-r")
@@ -268,7 +318,7 @@ def main():
 
         plt.plot(states.t, [ir * 3.6 for ir in states.v_right], "-g")
         plt.plot(states.t, [il * 3.6 for il in states.v_left], "-b")
-        plt.savefig(result_dir + "simple_diff_speed" + date + ".png")
+        # plt.savefig(result_dir + "steer_" + date + ".png")
         plt.show()
 
 if __name__ == '__main__':

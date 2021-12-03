@@ -19,7 +19,8 @@ Lfc = 2.0  # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
-TREAD = 0.5 # [m] 
+TREAD = 0.5 # [m]
+MAX_D_YAW_RATE = math.radians(90)  # [rad/s2] 
 show_animation = True
 
 

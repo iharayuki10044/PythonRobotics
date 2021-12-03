@@ -15,8 +15,8 @@ import datetime
 
 # Parameters
 k = 0.1  # look forward gain
-Lfc = 3.0  # [m] look-ahead distance
-Lfc_carrot2 = 1.0
+Lfc = 2.0  # [m] look-ahead distance
+Lfc_carrot2 = 0.5
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
@@ -43,7 +43,7 @@ class StateSteerModel:
         self.v += a * dt
         self.x += self.v * math.cos(self.yaw) * dt
         self.y += self.v * math.sin(self.yaw) * dt
-        self.steer_right_pos = right_steer 
+        self.steer_right_pos = right_steer
         self.steer_left_pos = left_steer
 
     def calc_distance(self, point_x, point_y):
@@ -166,16 +166,23 @@ def pure_pursuit_robot_steer_control(state, trajectory, pind, target_speed):
         ind = len(trajectory.cx) - 1
 
     alpha = math.atan2(ty - state.y, tx - state.x) - state.yaw
-    omega = target_speed * alpha / Lf
+    omega = target_speed * alpha / Lfc
     r = math.fabs(target_speed / omega)
-    
+ 
     # delta = math.atan2(alpha * target_speed, Lf)
-    delta = math.atan2(ty2 - state.y, tx2 - state.x) - state.yaw    
+    delta = math.atan2(ty2 - state.y, tx2 - state.x) - state.yaw 
     
-    omega = target_speed * alpha / Lf
-    right_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) - TREAD/2.0)
-    left_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) + TREAD/2.0)
-
+    omega = target_speed * alpha / Lfc
+    in_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) - TREAD/2.0)
+    out_steer = math.atan2(r * math.sin(delta), r * math.cos(delta) + TREAD/2.0)
+  
+    if omega > 0 :
+        right_steer = in_steer
+        left_steer = out_steer
+    else:
+        right_steer = out_steer
+        left_steer = in_steer
+ 
     return delta, alpha, omega, right_steer, left_steer, ind, ind_2
 
 def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
@@ -193,13 +200,13 @@ def plot_arrow(x, y, yaw, length=1.0, width=0.5, fc="r", ec="k"):
 
 def main():
     #  target course
-    cx = np.arange(0, 50, 0.5)
+    cx = np.arange(0, 50, 0.2)
     
     # default course
-    cy = [-1 *math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
+    cy = [math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
 
     # hitoigomi course
-    # cy = [math.sin(ix / 5.0) * ix / 2.0  + math.cos(ix / 50) *ix /5 for ix in cx]
+    # cy = [math.sin(ix / 5.0) * ix / 2.0  + math.sin(ix / 50) * ix / 5.0  + math.sin(ix / 10) * ix / 10 for ix in cx]
     # cy = [math.sin(ix / 2.0) for ix in cx]
 
     target_speed = 10.0 / 3.6  # [m/s]
@@ -224,7 +231,7 @@ def main():
         #simulate augumented steer robot model
         di, alpha, omega, right_steer, left_steer, target_ind, target_ind_carrot2= pure_pursuit_robot_steer_control(
             state, target_course, target_ind, target_speed)
-        state.update(ai, omega, right_steer, left_steer)        
+        state.update(ai, omega, right_steer, left_steer) 
         time += dt
         states.append_steer(time, state)
 
@@ -240,7 +247,7 @@ def main():
             plt.plot(cx, cy, "-r", label="course")
             plt.plot(states.x, states.y, "-b", label="trajectory")
             plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
-            plt.plot(cx[target_ind_carrot2], cy[target_ind_carrot2], "xy", label="target")
+            # plt.plot(cx[target_ind_carrot2], cy[target_ind_carrot2], "xy", label="target")
             plt.axis("equal")
             plt.grid(True)
             plt.title("Speed[km/h]:" + str(state.v * 3.6)[:4])
