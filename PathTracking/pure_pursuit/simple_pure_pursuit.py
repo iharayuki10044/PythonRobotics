@@ -189,7 +189,7 @@ def main():
     
     # default course
     # cy = [math.sin(ix / 5.0) * ix / 2.0 for ix in cx]
-    cy = [2.0*math.sin(ix /1.5) + 3.0*math.sin(ix/5.0) + 5.0*math.sin(ix/10.0) for ix in cx]
+    cy = [2.0*math.sin(ix /1.5) + 3.0*math.sin(ix/5.0) + -1 * 5.0*math.sin(ix/10.0) for ix in cx]
 
     # hitoigomi course
     # cy = [math.sin(ix / 5.0) * ix / 2.0  + math.cos(ix / 50) *ix /5 for ix in cx]
@@ -210,37 +210,36 @@ def main():
 
     target_ind, fake = target_course.search_target_index_steer_robot(state)
 
+    # while T >= time and lastIndex > target_ind:
 
-    while T >= time and lastIndex > target_ind:
+    #     # Calc control input
+    #     # ai = proportional_control(target_speed, state.v)
 
-        # Calc control input
-        # ai = proportional_control(target_speed, state.v)
-
-        # simulate augumented dynamic of bicycle model
-        di, alpha, omega, vr, vl , target_ind= pure_pursuit_robot_control(
-            state, target_course, target_ind, target_speed)
+    #     # simulate augumented dynamic of bicycle model
+    #     di, alpha, omega, vr, vl , target_ind= pure_pursuit_robot_control(
+    #         state, target_course, target_ind, target_speed)
         
-        a_right = proportional_control(vr , states.v_right[-1])
-        a_left = proportional_control(vl , states.v_left[-1])
+    #     a_right = proportional_control(vr , states.v_right[-1])
+    #     a_left = proportional_control(vl , states.v_left[-1])
         
-        state.update(di, a_right, a_left)  # Control vehicle
-        time += dt
-        states.append(time, state)
+    #     state.update(di, a_right, a_left)  # Control vehicle
+    #     time += dt
+    #     states.append(time, state)
     
-        if show_animation:  # pragma: no cover
-            plt.cla()
-            # for stopping simulation with the esc key.
-            plt.gcf().canvas.mpl_connect(
-                'key_release_event',
-                lambda event: [exit(0) if event.key == 'escape' else None])
-            plot_arrow(state.x, state.y, state.yaw)
-            plt.plot(cx, cy, "-r", label="course")
-            plt.plot(states.x, states.y, "-b", label="trajectory")
-            plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
-            plt.axis("equal")
-            plt.grid(True)
-            plt.title("Speed[km/h]:" + str(state.v * 3.6)[:4])
-            plt.pause(0.001)
+    #     if show_animation:  # pragma: no cover
+    #         plt.cla()
+    #         # for stopping simulation with the esc key.
+    #         plt.gcf().canvas.mpl_connect(
+    #             'key_release_event',
+    #             lambda event: [exit(0) if event.key == 'escape' else None])
+    #         plot_arrow(state.x, state.y, state.yaw)
+    #         plt.plot(cx, cy, "-r", label="course")
+    #         plt.plot(states.x, states.y, "-b", label="trajectory")
+    #         plt.plot(cx[target_ind], cy[target_ind], "xg", label="target")
+    #         plt.axis("equal")
+    #         plt.grid(True)
+    #         plt.title("Speed[km/h]:" + str(state.v * 3.6)[:4])
+    #         plt.pause(0.001)
 
     # Test
     assert lastIndex >= target_ind, "Cannot goal"
